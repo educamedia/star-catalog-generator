@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Catalog Generator by Leonardo Monntenegro from VOVEDA - 2025</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117;
+        }
+        .accent-purple-500::-webkit-slider-thumb {
+            background-color: #8b5cf6;
+        }
+        .accent-purple-500::-moz-range-thumb {
+            background-color: #8b5cf6;
+        }
+        .zoom-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+        }
+        .canvas-container {
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 4px;
+            background-color: #8b5cf6;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 100;
+            display: none;
+        }
+        .threshold-map {
+            opacity: 0.3;
+            mix-blend-mode: multiply;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-4xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
+        Star Catalog Generator
+    </h1>
+    <p class="text-gray-400 mb-8 text-center max-w-2xl">
+        Upload an astronomical image to detect and measure stars. Features multiple thresholding methods, zoom/pan controls, and detailed star analysis.
+    </p>
+
+    <main class="w-full max-w-6xl flex flex-col items-center">
+        <!-- P5.js Canvas Container -->
+        <div class="canvas-container w-full h-auto aspect-[4/3] bg-gray-800 border-4 border-gray-700 rounded-lg shadow-lg overflow-hidden relative">
+            <div id="p5-container" class="w-full h-full flex items-center justify-center"></div>
+            <p id="placeholder-text" class="absolute text-gray-500 text-2xl animate-pulse">
+                Upload an image to begin
+            </p>
+            <div class="zoom-controls flex flex-col gap-2">
+                <button id="zoom-in" class="p-2 bg-gray-700 rounded-full hover:bg-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                </button>
+                <button id="zoom-out" class="p-2 bg-gray-700 rounded-full hover:bg-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus"><line x1="5" x2="19" y1="12" y2="12"/></svg>
+                </button>
+                <button id="zoom-reset" class="p-2 bg-gray-700 rounded-full hover:bg-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-ccw"><path d="M21 12a9 9 0 0 0-9-9c-2.344 0-4.498.815-6.185 2.155"/><path d="M12 3v4a.5.5 0 0 1-.5.5h-4"/><path d="M3 12a9 9 0 0 0 9 9c2.344 0 4.498-.815 6.185-2.155"/><path d="M12 21v-4a.5.5 0 0 1 .5-.5h4"/></svg>
+                </button>
+            </div>
+            <div class="tooltip" id="star-tooltip"></div>
+        </div>
+        <div class="progress-bar w-full mt-1" id="progress-bar"></div>
+
+        <!-- Loading Indicator -->
+        <div id="loading-indicator" class="mt-4 text-green-400 font-semibold animate-pulse hidden">
+            Processing image... <span id="progress-text">0%</span>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="w-full mt-8 p-6 bg-gray-800 rounded-xl shadow-lg flex flex-wrap justify-center items-center gap-4">
+            <!-- File Upload Button -->
+            <label class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full bg-cyan-600 hover:bg-cyan-700 transition-colors cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-upload"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                Upload Image
+                <input type="file" id="file-upload" accept="image/*" class="hidden" />
+            </label>
+
+            <!-- Threshold Controls -->
+            <div class="threshold-controls bg-gray-700 rounded-lg p-3">
+                <div class="flex items-center gap-2">
+                    <label for="threshold-type" class="text-sm font-semibold">Method:</label>
+                    <select id="threshold-type" class="bg-gray-600 rounded p-1 text-sm">
+                        <option value="global">Global</option>
+                        <option value="adaptive">Adaptive</option>
+                        <option value="photon">Photon Noise</option>
+                    </select>
+                </div>
+                
+                <div id="global-threshold-control" class="mt-2">
+                    <div class="flex items-center gap-2">
+                        <label for="threshold-slider" class="text-sm">Threshold:</label>
+                        <input type="range" id="threshold-slider" min="0" max="255" value="50" class="w-32 accent-purple-500">
+                        <span id="threshold-value" class="text-sm w-8 text-center">50</span>
+                    </div>
+                </div>
+                
+                <div id="adaptive-threshold-control" class="mt-2 hidden">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs">Window Size</label>
+                            <input type="range" id="adaptive-window" min="16" max="128" value="32" class="w-full accent-purple-500">
+                            <span id="adaptive-window-value" class="text-xs">32px</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs">Offset</label>
+                            <input type="range" id="adaptive-offset" min="1" max="50" value="5" class="w-full accent-purple-500">
+                            <span id="adaptive-offset-value" class="text-xs">5</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="photon-threshold-control" class="mt-2 hidden">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs">Sigma</label>
+                            <input type="range" id="photon-sigma" min="1" max="10" value="5" class="w-full accent-purple-500">
+                            <span id="photon-sigma-value" class="text-xs">5</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs">Gain</label>
+                            <input type="number" id="photon-gain" value="1.0" step="0.1" class="w-full bg-gray-600 rounded p-1 text-xs">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Settings Dropdown -->
+            <div class="relative">
+                <button id="advanced-settings-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full bg-gray-700 hover:bg-gray-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Advanced
+                </button>
+                <div id="advanced-settings" class="absolute z-10 mt-2 w-64 p-4 bg-gray-700 rounded-lg shadow-lg hidden right-0">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="blur-radius" class="block text-sm font-medium text-gray-300 mb-1">Blur Radius</label>
+                            <input type="range" id="blur-radius" min="0" max="5" step="0.5" value="1" class="w-full accent-purple-500">
+                            <div class="flex justify-between text-xs text-gray-400">
+                                <span>0</span>
+                                <span id="blur-radius-value">1</span>
+                                <span>5</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="min-star-area" class="block text-sm font-medium text-gray-300 mb-1">Min Star Area</label>
+                            <input type="range" id="min-star-area" min="1" max="20" value="2" class="w-full accent-purple-500">
+                            <div class="flex justify-between text-xs text-gray-400">
+                                <span>1</span>
+                                <span id="min-star-area-value">2</span>
+                                <span>20</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <label for="use-background-subtraction" class="text-sm font-medium text-gray-300">Background Subtraction</label>
+                            <input type="checkbox" id="use-background-subtraction" checked class="rounded accent-purple-500">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <label for="calculate-fwhm" class="text-sm font-medium text-gray-300">Calculate FWHM</label>
+                            <input type="checkbox" id="calculate-fwhm" checked class="rounded accent-purple-500">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <label for="show-threshold-map" class="text-sm font-medium text-gray-300">Show Threshold Map</label>
+                            <input type="checkbox" id="show-threshold-map" class="rounded accent-purple-500">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Magnitude Zero Point Input -->
+            <div class="flex items-center gap-2 bg-gray-700 rounded-full px-4 py-2">
+                <label class="text-sm font-semibold whitespace-nowrap">Mag. Zero Pt:</label>
+                <div class="flex items-center">
+                    <button id="mag-minus-btn" class="p-1 rounded-full bg-gray-600 hover:bg-gray-500 text-white">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus-circle"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+                    </button>
+                    <input type="number" id="mag-zero-point" value="10" class="w-16 mx-2 bg-transparent text-center border-b border-gray-500 focus:outline-none focus:border-purple-500" />
+                    <button id="mag-plus-btn" class="p-1 rounded-full bg-gray-600 hover:bg-gray-500 text-white">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-circle"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- View Buttons -->
+            <div class="flex gap-2">
+                <button id="view-original-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full transition-colors bg-purple-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    Original
+                </button>
+                <button id="view-stars-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full transition-colors bg-gray-700 hover:bg-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles"><path d="M9.982 12.028a1 1 0 0 0 .546.546l.032.008.01.002c.07.013.14.022.21.025a.8.8 0 0 0 .265-.052 1 1 0 0 0 .546-.546l.004-.012.008-.032c.004-.017.009-.033.013-.05a.8.8 0 0 0-.052-.265 1 1 0 0 0-.546-.546l-.012-.004-.032-.008c-.017-.004-.033-.009-.05-.013a.8.8 0 0 0-.265.052 1 1 0 0 0-.546.546l-.004.012-.008.032c-.004.017-.009.033-.013.05a.8.8 0 0 0 .052.265z"/><path d="M13.25 10.75l.169-.169a3 3 0 0 1 4.242 0L17.5 10.75m-.5-7.5L14 7l2 2m4 4l-3 3-2 2m-2-4L7 14l3-3m-4 2l1.5-1.5m10 7L18 18l3-3M3 3l.5.5m.5 10l-1.5 1.5m15 0l-.5-.5m15 0l-.5-.5"/><path d="M12 21v-4"/><path d="M12 3v4"/><path d="M21 12h-4"/><path d="M3 12h4"/></svg>
+                    Star Map
+                </button>
+                <button id="view-threshold-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full transition-colors bg-gray-700 hover:bg-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-palette"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.648 0-.478-.17-.9-.47-.972C13.518 19.04 14.134 19 15 19c3.35 0 6-2.65 6-6 0-1.25-.39-2.92-.86-3.96C20.375 4.887 16.621 2 12 2z"/></svg>
+                    Threshold
+                </button>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-2">
+                <button id="reprocess-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full bg-blue-600 hover:bg-blue-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-ccw"><path d="M21 12a9 9 0 0 0-9-9c-2.344 0-4.498.815-6.185 2.155"/><path d="M12 3v4a.5.5 0 0 1-.5.5h-4"/><path d="M3 12a9 9 0 0 0 9 9c2.344 0 4.498-.815 6.185-2.155"/><path d="M12 21v-4a.5.5 0 0 1 .5-.5h4"/></svg>
+                    Reprocess
+                </button>
+                <button id="catalog-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full transition-colors bg-gray-700 hover:bg-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                    Catalog
+                </button>
+                <button id="export-btn" class="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-full bg-green-600 hover:bg-green-700 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-save"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Export Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Status bar -->
+        <div class="mt-4 text-center text-gray-300">
+            Stars Detected: <span id="star-count" class="font-bold text-cyan-400">0</span> | 
+            Avg FWHM: <span id="avg-fwhm" class="font-bold text-purple-400">-</span> px | 
+            Min Mag: <span id="min-mag" class="font-bold text-yellow-400">-</span> | 
+            Max Mag: <span id="max-mag" class="font-bold text-yellow-400">-</span>
+        </div>
+
+        <!-- Star Catalog Table -->
+        <div id="star-table-container" class="mt-8 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden hidden">
+            <div class="w-full overflow-auto max-h-96">
+                <table class="w-full caption-bottom text-sm">
+                    <thead class="[&_tr]:border-b sticky top-0 bg-gray-700">
+                        <tr class="bg-gray-700">
+                            <th id="sort-id" class="h-12 px-4 text-left align-middle font-medium text-gray-200 cursor-pointer">
+                                <div class="flex items-center">
+                                    ID <span class="sort-icon hidden" data-key="id"></span>
+                                </div>
+                            </th>
+                            <th id="sort-x" class="h-12 px-4 text-left align-middle font-medium text-gray-200 cursor-pointer">
+                                <div class="flex items-center">
+                                    X <span class="sort-icon hidden" data-key="x"></span>
+                                </div>
+                            </th>
+                            <th id="sort-y" class="h-12 px-4 text-left align-middle font-medium text-gray-200 cursor-pointer">
+                                <div class="flex items-center">
+                                    Y <span class="sort-icon hidden" data-key="y"></span>
+                                </div>
+                            </th>
+                            <th id="sort-flux" class="h-12 px-4 text-left align-middle font-medium text-gray-200 cursor-pointer">
+                                <div class="flex items-center">
+                                    Flux <span class="sort-icon hidden" data-key="flux"></span>
+                                </div>
+                            </th>
+                            <th id="sort-area" class="h-12 px-4 text-left align-middle font-medium text-gray-200 cursor-pointer">
+                                <div class="flex items-center">
+                                    Area <span class="sort-icon hidden" data-key="area"></span>
+                                </div>
+                            </th>
+                            <th id="sort-mag" class="h-12 px-4 text-left align-middle font-medium text-gray-200 cursor-pointer">
+                                <div class="flex items-center">
+                                    Magnitude <span class="sort-icon hidden" data-key="magnitude"></span>
+                                </div>
+                            </th>
+                            <th id="sort-fwhm" class="h-12 px-4 text-left align-middle font-medium text-gray-200 cursor-pointer">
+                                <div class="flex items-center">
+                                    FWHM <span class="sort-icon hidden" data-key="fwhm"></span>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="star-table-body" class="[&_tr:last-child]:border-0">
+                        <tr>
+                            <td colspan="7" class="h-24 text-center text-gray-500">
+                                No stars to display.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Alert Modal -->
+    <div id="alert-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 hidden">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-lg max-w-sm w-full border-2 border-yellow-400">
+            <div class="flex items-center space-x-2 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-triangle text-yellow-400"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12" y1="17" y2="17"/></svg>
+                <h3 class="text-lg font-bold text-white">Alert</h3>
+            </div>
+            <p id="alert-message" class="text-gray-300 mb-4"></p>
+            <div class="flex justify-end">
+                <button id="alert-ok-btn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Options Modal -->
+    <div id="export-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 hidden">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full border-2 border-purple-500">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-bold text-white">Export Options</h3>
+                <button id="export-close-btn" class="text-gray-400 hover:text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Format</label>
+                    <div class="flex gap-4">
+                        <label class="flex items-center">
+                            <input type="radio" name="export-format" value="csv" checked class="mr-2 accent-purple-500">
+                            <span>CSV</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="export-format" value="json" class="mr-2 accent-purple-500">
+                            <span>JSON</span>
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Include</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center">
+                            <input type="checkbox" checked class="mr-2 accent-purple-500">
+                            <span>Star Positions</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" checked class="mr-2 accent-purple-500">
+                            <span>Flux Values</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" checked class="mr-2 accent-purple-500">
+                            <span>Magnitudes</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" checked class="mr-2 accent-purple-500">
+                            <span>FWHM</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="pt-4 flex justify-end gap-2">
+                    <button id="export-cancel-btn" class="px-4 py-2 rounded-full bg-gray-600 hover:bg-gray-500 transition-colors">
+                        Cancel
+                    </button>
+                    <button id="export-confirm-btn" class="px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-700 transition-colors">
+                        Export
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for application state
+        let myP5;
+        let astroImage = null;
+        let processedImage = null;
+        let thresholdMap = null;
+        let starCollection = [];
+        let currentThreshold = 50;
+        let currentView = 'original';
+        let showStarTable = false;
+        let isLoading = false;
+        let sortConfig = { key: 'flux', direction: 'descending' };
+        let magnitudeZeroPoint = 10;
+        let zoomLevel = 1.0;
+        let panOffset = { x: 0, y: 0 };
+        let isDragging = false;
+        let lastMousePos = { x: 0, y: 0 };
+        let showThresholdMap = false;
+        let blurRadius = 1;
+        let minStarArea = 2;
+        let useBackgroundSubtraction = true;
+        let calculateFWHM = true;
+        
+        // Threshold settings
+        let thresholdMethod = 'global';
+        let adaptiveWindowSize = 32;
+        let adaptiveOffset = 5;
+        let photonSigma = 5;
+        let photonGain = 1.0;
+        
+        // Icon SVG strings for sorting
+        const sortAscIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sort-asc ml-1 h-4 w-4"><path d="m7 17 5-5 5 5"/><path d="M12 12v9"/></svg>`;
+        const sortDescIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sort-desc ml-1 h-4 w-4"><path d="m7 7 5 5 5-5"/><path d="M12 12V3"/></svg>`;
+
+        // ========================================================================
+        // P5.js Sketch with Zoom/Pan Functionality
+        // ========================================================================
+        const sketch = (p) => {
+            let canvasWidth = 800;
+            let canvasHeight = 600;
+            let canvas;
+
+            p.setup = () => {
+                canvas = p.createCanvas(canvasWidth, canvasHeight).parent('p5-container');
+                p.pixelDensity(1);
+                
+                // Add mouse event listeners for panning
+                canvas.mousePressed(() => {
+                    if (astroImage && p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+                        isDragging = true;
+                        lastMousePos = { x: p.mouseX, y: p.mouseY };
+                        p.loop(); // Ensure draw continues while dragging
+                    }
+                });
+                
+                canvas.mouseReleased(() => {
+                    isDragging = false;
+                    if (currentView !== 'stars') {
+                        p.noLoop(); // Return to noLoop if not needed
+                    }
+                });
+                
+                canvas.mouseMoved(() => {
+                    if (currentView === 'stars' && astroImage) {
+                        updateStarTooltip(p.mouseX, p.mouseY);
+                    }
+                });
+            };
+
+            p.draw = () => {
+                p.background(0);
+
+                if (!astroImage) {
+                    return;
+                }
+
+                // Handle panning
+                if (isDragging) {
+                    const dx = p.mouseX - lastMousePos.x;
+                    const dy = p.mouseY - lastMousePos.y;
+                    panOffset.x += dx / zoomLevel;
+                    panOffset.y += dy / zoomLevel;
+                    lastMousePos = { x: p.mouseX, y: p.mouseY };
+                }
+
+                p.push();
+                p.translate(p.width/2, p.height/2);
+                p.scale(zoomLevel);
+                p.translate(-p.width/2 + panOffset.x, -p.height/2 + panOffset.y);
+
+                // Render the correct image based on the current view state
+                switch (currentView) {
+                    case 'original':
+                        p.image(astroImage, 0, 0, p.width, p.height);
+                        break;
+                    case 'threshold':
+                        if (processedImage) {
+                            p.image(processedImage, 0, 0, p.width, p.height);
+                            if (showThresholdMap && thresholdMap) {
+                                p.tint(255, 100);
+                                p.image(thresholdMap, 0, 0, p.width, p.height);
+                            }
+                        }
+                        break;
+                    case 'stars':
+                        drawStarMap(p);
+                        break;
+                }
+                p.pop();
+            };
+
+            /**
+             * Draws the detected stars on the p5 canvas.
+             * @param {p5} p The p5 instance.
+             */
+            const drawStarMap = (p) => {
+                if (!starCollection.length) {
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(16);
+                    p.fill(255);
+                    p.text("No stars detected. Try adjusting the threshold.", p.width / 2, p.height / 2);
+                    return;
+                }
+
+                const maxStars = Math.min(500, starCollection.length);
+                const scaleX = p.width / astroImage.width;
+                const scaleY = p.height / astroImage.height;
+
+                for (let i = 0; i < maxStars; i++) {
+                    const star = starCollection[i];
+                    const x = star.x * scaleX;
+                    const y = star.y * scaleY;
+                    const size = p.sqrt(star.flux) / 20 * scaleX;
+
+                    p.noStroke();
+                    
+                    // Color stars by magnitude
+                    const magRange = 10; // Adjust based on your magnitude range
+                    const magRatio = Math.min(1, Math.max(0, (star.magnitude - magnitudeZeroPoint + magRange/2) / magRange));
+                    const r = 255;
+                    const g = p.lerp(255, 100, magRatio);
+                    const b = p.lerp(255, 100, magRatio);
+                    
+                    p.fill(r, g, b, 178);
+                    p.ellipse(x, y, size);
+
+                    // Label the brightest stars
+                    if (i < 20) {
+                        p.fill(255, 200);
+                        p.textSize(12);
+                        p.text(star.id, x + size + 5, y);
+                    }
+                }
+            };
+        };
+
+        // ========================================================================
+        // Threshold Calculation Functions
+        // ========================================================================
+
+        /**
+         * Creates a threshold map based on the selected method
+         */
+        function calculateThresholdMap(image) {
+            switch (thresholdMethod) {
+                case 'adaptive':
+                    return createAdaptiveThresholdMap(image);
+                case 'photon':
+                    return createPhotonNoiseThresholdMap(image);
+                default:
+                    return createGlobalThresholdMap(image);
+            }
+        }
+
+        /**
+         * Simple global threshold map
+         */
+        function createGlobalThresholdMap(image) {
+            const p = myP5;
+            const thresholdImg = p.createImage(image.width, image.height);
+            thresholdImg.loadPixels();
+            
+            for (let i = 0; i < thresholdImg.pixels.length; i += 4) {
+                thresholdImg.pixels[i] = currentThreshold;
+                thresholdImg.pixels[i+1] = currentThreshold;
+                thresholdImg.pixels[i+2] = currentThreshold;
+                thresholdImg.pixels[i+3] = 255;
+            }
+            
+            thresholdImg.updatePixels();
+            return thresholdImg;
+        }
+
+        /**
+         * Adaptive local threshold map
+         */
+        function createAdaptiveThresholdMap(image) {
+            const p = myP5;
+            const thresholdImg = p.createImage(image.width, image.height);
+            const halfWindow = Math.floor(adaptiveWindowSize/2);
+            
+            image.loadPixels();
+            thresholdImg.loadPixels();
+            
+            for (let y = 0; y < image.height; y++) {
+                for (let x = 0; x < image.width; x++) {
+                    // Get local window pixels (with edge handling)
+                    let sum = 0;
+                    let count = 0;
+                    
+                    for (let wy = -halfWindow; wy <= halfWindow; wy++) {
+                        for (let wx = -halfWindow; wx <= halfWindow; wx++) {
+                            const px = Math.max(0, Math.min(image.width-1, x+wx));
+                            const py = Math.max(0, Math.min(image.height-1, y+wy));
+                            const idx = (py * image.width + px) * 4;
+                            sum += image.pixels[idx];
+                            count++;
+                        }
+                    }
+                    
+                    // Calculate local threshold (mean + offset)
+                    const localThreshold = Math.round(sum / count) + adaptiveOffset;
+                    const idx = (y * image.width + x) * 4;
+                    
+                    thresholdImg.pixels[idx] = localThreshold;
+                    thresholdImg.pixels[idx+1] = localThreshold;
+                    thresholdImg.pixels[idx+2] = localThreshold;
+                    thresholdImg.pixels[idx+3] = 255;
+                }
+            }
+            
+            thresholdImg.updatePixels();
+            return thresholdImg;
+        }
+
+        /**
+         * Photon noise-adjusted threshold map
+         */
+        function createPhotonNoiseThresholdMap(image) {
+            const p = myP5;
+            const thresholdImg = p.createImage(image.width, image.height);
+            
+            // First create background model using median filter
+            const background = createAdaptiveThresholdMap(image);
+            background.loadPixels();
+            image.loadPixels();
+            thresholdImg.loadPixels();
+            
+            for (let i = 0; i < image.pixels.length; i += 4) {
+                const bg = background.pixels[i];
+                // Calculate expected photon noise
+                const noise = Math.sqrt(bg * photonGain);
+                const localThreshold = Math.round(bg + photonSigma * noise);
+                
+                thresholdImg.pixels[i] = localThreshold;
+                thresholdImg.pixels[i+1] = localThreshold;
+                thresholdImg.pixels[i+2] = localThreshold;
+                thresholdImg.pixels[i+3] = 255;
+            }
+            
+            thresholdImg.updatePixels();
+            return thresholdImg;
+        }
+
+        // ========================================================================
+        // Core Logic and Event Handlers
+        // ========================================================================
+
+        /**
+         * Updates the progress bar and text during processing.
+         * @param {number} progress Progress percentage (0-100).
+         */
+        const updateProgress = (progress) => {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${Math.round(progress)}%`;
+        };
+
+        /**
+         * Hides or shows the loading indicator.
+         * @param {boolean} show Whether to show the indicator.
+         */
+        const setLoading = (show) => {
+            isLoading = show;
+            document.getElementById('loading-indicator').classList.toggle('hidden', !show);
+            if (!show) {
+                document.getElementById('progress-bar').style.width = '0%';
+            }
+        };
+
+        /**
+         * Displays an alert modal with a given message.
+         * @param {string} message The message to display.
+         */
+        const showAlert = (message) => {
+            const modal = document.getElementById('alert-modal');
+            const msgElement = document.getElementById('alert-message');
+            msgElement.textContent = message;
+            modal.classList.remove('hidden');
+        };
+
+        /**
+         * Shows the export options modal.
+         */
+        const showExportModal = () => {
+            document.getElementById('export-modal').classList.remove('hidden');
+        };
+
+        /**
+         * Updates the star tooltip based on mouse position.
+         * @param {number} mouseX X position of mouse.
+         * @param {number} mouseY Y position of mouse.
+         */
+        const updateStarTooltip = (mouseX, mouseY) => {
+            if (!starCollection.length) return;
+            
+            const tooltip = document.getElementById('star-tooltip');
+            const scaleX = myP5.width / astroImage.width;
+            const scaleY = myP5.height / astroImage.height;
+            
+            // Adjust for zoom and pan
+            const adjustedX = (mouseX - myP5.width/2) / zoomLevel + myP5.width/2 - panOffset.x;
+            const adjustedY = (mouseY - myP5.height/2) / zoomLevel + myP5.height/2 - panOffset.y;
+            
+            let closestStar = null;
+            let minDist = Infinity;
+            
+            // Find closest star within a reasonable distance
+            for (const star of starCollection.slice(0, 100)) {
+                const starX = star.x * scaleX;
+                const starY = star.y * scaleY;
+                const dist = Math.sqrt(Math.pow(adjustedX - starX, 2) + Math.pow(adjustedY - starY, 2));
+                
+                if (dist < 30 && dist < minDist) {
+                    minDist = dist;
+                    closestStar = star;
+                }
+            }
+            
+            if (closestStar) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = `${mouseX + 10}px`;
+                tooltip.style.top = `${mouseY + 10}px`;
+                tooltip.innerHTML = `
+                    <div class="font-bold">Star ${closestStar.id}</div>
+                    <div>X: ${closestStar.x.toFixed(1)}</div>
+                    <div>Y: ${closestStar.y.toFixed(1)}</div>
+                    <div>Mag: ${closestStar.magnitude.toFixed(2)}</div>
+                    ${closestStar.fwhm ? `<div>FWHM: ${closestStar.fwhm.toFixed(2)} px</div>` : ''}
+                `;
+            } else {
+                tooltip.style.display = 'none';
+            }
+        };
+
+        /**
+         * The main image processing and star detection function.
+         */
+        const processAndFindStars = () => {
+            if (!astroImage) return;
+
+            setLoading(true);
+            document.getElementById('placeholder-text').classList.add('hidden');
+
+            // Use setTimeout to allow UI updates before heavy processing
+            setTimeout(() => {
+                try {
+                    const p = myP5;
+                    const tempImage = p.createImage(astroImage.width, astroImage.height);
+                    tempImage.copy(astroImage, 0, 0, astroImage.width, astroImage.height, 0, 0, tempImage.width, tempImage.height);
+                    tempImage.filter(p.GRAY);
+
+                    updateProgress(10);
+
+                    // Background Subtraction
+                    if (useBackgroundSubtraction) {
+                        tempImage.loadPixels();
+                        let totalIntensity = 0;
+                        let pixelCount = 0;
+                        
+                        // Sample every 10th pixel for performance
+                        for (let i = 0; i < tempImage.pixels.length; i += 40) {
+                            totalIntensity += tempImage.pixels[i];
+                            pixelCount++;
+                        }
+                        
+                        const averageIntensity = totalIntensity / pixelCount;
+                        const brightnessOffset = Math.max(0, averageIntensity - 20);
+                        
+                        for (let i = 0; i < tempImage.pixels.length; i += 4) {
+                            tempImage.pixels[i] = Math.max(0, tempImage.pixels[i] - brightnessOffset);
+                            tempImage.pixels[i + 1] = Math.max(0, tempImage.pixels[i + 1] - brightnessOffset);
+                            tempImage.pixels[i + 2] = Math.max(0, tempImage.pixels[i + 2] - brightnessOffset);
+                        }
+                        tempImage.updatePixels();
+                    }
+
+                    updateProgress(30);
+
+                    // Noise Reduction
+                    if (blurRadius > 0) {
+                        for (let i = 0; i < blurRadius; i++) {
+                            tempImage.filter(p.BLUR, 1);
+                            updateProgress(30 + (i / blurRadius) * 20);
+                        }
+                    }
+
+                    processedImage = tempImage;
+                    updateProgress(60);
+
+                    // Calculate threshold map based on selected method
+                    thresholdMap = calculateThresholdMap(tempImage);
+                    updateProgress(70);
+
+                    // Star Detection using a Connected-Components Algorithm
+                    const width = tempImage.width;
+                    const height = tempImage.height;
+                    const starGrid = Array.from({ length: width }, () => new Array(height).fill(0));
+                    const starRegistry = {};
+                    let nextStarId = 1;
+                    const starIdMap = {};
+
+                    tempImage.loadPixels();
+                    thresholdMap.loadPixels();
+
+                    // First pass: Identify star regions
+                    for (let y = 1; y < height - 1; y++) {
+                        for (let x = 1; x < width - 1; x++) {
+                            const idx = (x + y * width) * 4;
+                            const intensity = tempImage.pixels[idx];
+                            const threshold = thresholdMap.pixels[idx];
+
+                            if (intensity > threshold) {
+                                const neighbors = [
+                                    starGrid[x - 1][y - 1], starGrid[x][y - 1],
+                                    starGrid[x + 1][y - 1], starGrid[x - 1][y]]
+                                .filter(id => id > 0);
+
+                                if (neighbors.length === 0) {
+                                    starGrid[x][y] = nextStarId;
+                                    starRegistry[nextStarId] = [{ x, y, intensity }];
+                                    starIdMap[nextStarId] = nextStarId;
+                                    nextStarId++;
+                                } else {
+                                    const primaryId = Math.min(...neighbors.map(id => starIdMap[id]));
+                                    starGrid[x][y] = primaryId;
+                                    
+                                    if (!starRegistry[primaryId]) {
+                                        starRegistry[primaryId] = [];
+                                    }
+                                    starRegistry[primaryId].push({ x, y, intensity });
+
+                                    // Update starIdMap for all neighbors
+                                    for (const otherId of neighbors) {
+                                        if (otherId !== primaryId) {
+                                            starIdMap[otherId] = primaryId;
+                                            if (starRegistry[otherId]) {
+                                                starRegistry[primaryId].push(...starRegistry[otherId]);
+                                                starRegistry[otherId] = null;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Update progress based on rows processed
+                        if (y % 10 === 0) {
+                            updateProgress(70 + (y / height) * 20);
+                        }
+                    }
+                    
+                    compileStarCatalog(starRegistry);
+                    updateProgress(100);
+                    setLoading(false);
+                } catch (error) {
+                    console.error("Processing error:", error);
+                    showAlert("An error occurred during processing. Please try again.");
+                    setLoading(false);
+                }
+            }, 100);
+        };
+
+        /**
+         * Calculates the FWHM (Full Width at Half Maximum) for a star.
+         * @param {Array} pixels Array of pixel data for the star.
+         * @param {number} centerX X coordinate of the star center.
+         * @param {number} centerY Y coordinate of the star center.
+         * @returns {number} The calculated FWHM in pixels.
+         */
+        const calculateStarFWHM = (pixels, centerX, centerY) => {
+            if (!calculateFWHM) return null;
+            
+            try {
+                // Find peak intensity
+                let peakIntensity = 0;
+                for (const px of pixels) {
+                    if (px.intensity > peakIntensity) {
+                        peakIntensity = px.intensity;
+                    }
+                }
+                
+                const halfMax = peakIntensity / 2;
+                let left = centerX, right = centerX;
+                let top = centerY, bottom = centerY;
+                
+                // Find horizontal extent at half maximum
+                for (const px of pixels) {
+                    if (px.intensity >= halfMax) {
+                        if (px.x < left) left = px.x;
+                        if (px.x > right) right = px.x;
+                        if (px.y < top) top = px.y;
+                        if (px.y > bottom) bottom = px.y;
+                    }
+                }
+                
+                const fwhmX = right - left + 1;
+                const fwhmY = bottom - top + 1;
+                
+                // Return average of horizontal and vertical FWHM
+                return (fwhmX + fwhmY) / 2;
+            } catch (error) {
+                console.error("FWHM calculation error:", error);
+                return null;
+            }
+        };
+
+        /**
+         * Compiles the final star catalog from the detected pixel groups.
+         * @param {object} starGroups An object of pixel groups representing stars.
+         */
+        const compileStarCatalog = (starGroups) => {
+            const compiledStars = [];
+            let totalFWHM = 0;
+            let fwhmCount = 0;
+            let minMagnitude = Infinity;
+            let maxMagnitude = -Infinity;
+
+            for (const starId in starGroups) {
+                const pixels = starGroups[starId];
+                if (!pixels || pixels.length < minStarArea) continue;
+
+                let totalIntensity = 0;
+                let weightedX = 0;
+                let weightedY = 0;
+
+                for (const px of pixels) {
+                    totalIntensity += px.intensity;
+                    weightedX += px.x * px.intensity;
+                    weightedY += px.y * px.intensity;
+                }
+
+                const centerX = weightedX / totalIntensity;
+                const centerY = weightedY / totalIntensity;
+                const flux = totalIntensity;
+                const area = pixels.length;
+                
+                const magnitude = -2.5 * Math.log10(flux / area) + magnitudeZeroPoint;
+                const fwhm = calculateStarFWHM(pixels, centerX, centerY);
+                
+                if (fwhm) {
+                    totalFWHM += fwhm;
+                    fwhmCount++;
+                }
+
+                if (magnitude < minMagnitude) minMagnitude = magnitude;
+                if (magnitude > maxMagnitude) maxMagnitude = magnitude;
+
+                compiledStars.push({
+                    id: parseInt(starId),
+                    x: centerX,
+                    y: centerY,
+                    flux: flux,
+                    area: area,
+                    magnitude: magnitude,
+                    fwhm: fwhm
+                });
+            }
+
+            // Sort by flux in descending order by default
+            starCollection = compiledStars.sort((a, b) => b.flux - a.flux);
+            document.getElementById('star-count').textContent = starCollection.length;
+            
+            // Update stats
+            if (fwhmCount > 0) {
+                document.getElementById('avg-fwhm').textContent = (totalFWHM / fwhmCount).toFixed(2);
+            }
+            document.getElementById('min-mag').textContent = minMagnitude !== Infinity ? minMagnitude.toFixed(2) : '-';
+            document.getElementById('max-mag').textContent = maxMagnitude !== -Infinity ? maxMagnitude.toFixed(2) : '-';
+            
+            renderStarTable();
+            myP5.redraw();
+        };
+
+        /**
+         * Renders the star table based on the current star collection.
+         */
+        const renderStarTable = () => {
+            const tableBody = document.getElementById('star-table-body');
+            tableBody.innerHTML = '';
+            
+            if (starCollection.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="7" class="h-24 text-center text-gray-500">No stars to display.</td></tr>`;
+                return;
+            }
+
+            starCollection.slice(0, 200).forEach(star => {
+                const row = document.createElement('tr');
+                row.className = 'border-b transition-colors hover:bg-gray-700';
+                row.innerHTML = `
+                    <td class="p-4 align-middle font-medium">${star.id}</td>
+                    <td class="p-4 align-middle">${star.x.toFixed(2)}</td>
+                    <td class="p-4 align-middle">${star.y.toFixed(2)}</td>
+                    <td class="p-4 align-middle">${star.flux.toFixed(2)}</td>
+                    <td class="p-4 align-middle">${star.area}</td>
+                    <td class="p-4 align-middle">${star.magnitude.toFixed(2)}</td>
+                    <td class="p-4 align-middle">${star.fwhm ? star.fwhm.toFixed(2) : '-'}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        };
+
+        /**
+         * Sorts the star table by a given key.
+         * @param {string} key The property to sort by.
+         */
+        const sortTable = (key) => {
+            let direction = 'ascending';
+            if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+                direction = 'descending';
+            }
+            starCollection.sort((a, b) => {
+                if (a[key] < b[key]) return direction === 'ascending' ? -1 : 1;
+                if (a[key] > b[key]) return direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+            sortConfig = { key, direction };
+            updateSortIcons();
+            renderStarTable();
+        };
+
+        /**
+         * Updates the sort icons in the table header.
+         */
+        const updateSortIcons = () => {
+            document.querySelectorAll('.sort-icon').forEach(icon => {
+                icon.innerHTML = '';
+                icon.classList.add('hidden');
+                if (icon.dataset.key === sortConfig.key) {
+                    icon.classList.remove('hidden');
+                    icon.innerHTML = sortConfig.direction === 'ascending' ? sortAscIcon : sortDescIcon;
+                }
+            });
+        };
+
+        /**
+         * Exports the star catalog in the selected format.
+         */
+        const exportData = () => {
+            if (!starCollection.length) {
+                showAlert("No stars detected to export.");
+                return;
+            }
+
+            const format = document.querySelector('input[name="export-format"]:checked').value;
+            let data, mimeType, extension;
+
+            if (format === 'csv') {
+                // Prepare CSV data
+                let csv = 'ID,X,Y,Flux,Area,Magnitude,FWHM\n';
+                starCollection.forEach(star => {
+                    csv += `${star.id},${star.x.toFixed(2)},${star.y.toFixed(2)},${star.flux.toFixed(2)},${star.area},${star.magnitude.toFixed(2)},${star.fwhm ? star.fwhm.toFixed(2) : ''}\n`;
+                });
+                data = csv;
+                mimeType = 'text/csv';
+                extension = 'csv';
+            } else {
+                // Prepare JSON data
+                const jsonData = starCollection.map(star => ({
+                    id: star.id,
+                    x: star.x,
+                    y: star.y,
+                    flux: star.flux,
+                    area: star.area,
+                    magnitude: star.magnitude,
+                    fwhm: star.fwhm
+                }));
+                data = JSON.stringify(jsonData, null, 2);
+                mimeType = 'application/json';
+                extension = 'json';
+            }
+
+            const blob = new Blob([data], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `star_catalog.${extension}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        /**
+         * Resets the zoom and pan to default values.
+         */
+        const resetZoom = () => {
+            zoomLevel = 1.0;
+            panOffset = { x: 0, y: 0 };
+            myP5.redraw();
+        };
+
+        /**
+         * Zooms in or out by a factor.
+         * @param {number} factor Zoom factor (e.g., 1.2 for zoom in, 0.8 for zoom out).
+         */
+        const zoom = (factor) => {
+            zoomLevel *= factor;
+            zoomLevel = Math.max(0.1, Math.min(zoomLevel, 10)); // Limit zoom range
+            myP5.redraw();
+        };
+
+        // ========================================================================
+        // Event Listeners on DOM Load
+        // ========================================================================
+        window.onload = () => {
+            // Initialize p5.js sketch
+            myP5 = new p5(sketch);
+            
+            const fileUpload = document.getElementById('file-upload');
+            const thresholdSlider = document.getElementById('threshold-slider');
+            const thresholdValue = document.getElementById('threshold-value');
+            const magZeroPointInput = document.getElementById('mag-zero-point');
+            const magMinusBtn = document.getElementById('mag-minus-btn');
+            const magPlusBtn = document.getElementById('mag-plus-btn');
+            const reprocessBtn = document.getElementById('reprocess-btn');
+            const catalogBtn = document.getElementById('catalog-btn');
+            const exportBtn = document.getElementById('export-btn');
+            const alertOkBtn = document.getElementById('alert-ok-btn');
+            const exportCloseBtn = document.getElementById('export-close-btn');
+            const exportCancelBtn = document.getElementById('export-cancel-btn');
+            const exportConfirmBtn = document.getElementById('export-confirm-btn');
+            const starTableContainer = document.getElementById('star-table-container');
+            const advancedSettingsBtn = document.getElementById('advanced-settings-btn');
+            const advancedSettings = document.getElementById('advanced-settings');
+            const blurRadiusSlider = document.getElementById('blur-radius');
+            const blurRadiusValue = document.getElementById('blur-radius-value');
+            const minStarAreaSlider = document.getElementById('min-star-area');
+            const minStarAreaValue = document.getElementById('min-star-area-value');
+            const backgroundSubtractionCheckbox = document.getElementById('use-background-subtraction');
+            const calculateFWHMCheckbox = document.getElementById('calculate-fwhm');
+            const showThresholdMapCheckbox = document.getElementById('show-threshold-map');
+            const zoomInBtn = document.getElementById('zoom-in');
+            const zoomOutBtn = document.getElementById('zoom-out');
+            const zoomResetBtn = document.getElementById('zoom-reset');
+            const thresholdTypeSelect = document.getElementById('threshold-type');
+            const globalThresholdControl = document.getElementById('global-threshold-control');
+            const adaptiveThresholdControl = document.getElementById('adaptive-threshold-control');
+            const photonThresholdControl = document.getElementById('photon-threshold-control');
+            const adaptiveWindowSlider = document.getElementById('adaptive-window');
+            const adaptiveWindowValue = document.getElementById('adaptive-window-value');
+            const adaptiveOffsetSlider = document.getElementById('adaptive-offset');
+            const adaptiveOffsetValue = document.getElementById('adaptive-offset-value');
+            const photonSigmaSlider = document.getElementById('photon-sigma');
+            const photonSigmaValue = document.getElementById('photon-sigma-value');
+            const photonGainInput = document.getElementById('photon-gain');
+
+            const viewBtns = {
+                original: document.getElementById('view-original-btn'),
+                stars: document.getElementById('view-stars-btn'),
+                threshold: document.getElementById('view-threshold-btn')
+            };
+
+            const toggleViewButtonClass = (view) => {
+                Object.keys(viewBtns).forEach(key => {
+                    if (key === view) {
+                        viewBtns[key].classList.add('bg-purple-600');
+                        viewBtns[key].classList.remove('bg-gray-700', 'hover:bg-gray-600');
+                    } else {
+                        viewBtns[key].classList.remove('bg-purple-600');
+                        viewBtns[key].classList.add('bg-gray-700', 'hover:bg-gray-600');
+                    }
+                });
+            };
+
+            // Image file upload handler
+            fileUpload.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                if (!file.type.match('image.*')) {
+                    showAlert("Please select a valid image file (JPEG, PNG, etc.).");
+                    return;
+                }
+
+                setLoading(true);
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    astroImage = myP5.loadImage(e.target.result,
+                        () => {
+                            resetZoom();
+                            setLoading(false);
+                            processAndFindStars();
+                            myP5.redraw();
+                        },
+                        (err) => {
+                            console.error("Image load error:", err);
+                            showAlert("Error loading image. Please try another file.");
+                            setLoading(false);
+                        }
+                    );
+                };
+
+                reader.onerror = () => {
+                    console.error("FileReader error");
+                    showAlert("Error reading file.");
+                    setLoading(false);
+                };
+
+                reader.readAsDataURL(file);
+            });
+
+            // Threshold slider change handler
+            thresholdSlider.addEventListener('input', (event) => {
+                currentThreshold = parseInt(event.target.value);
+                thresholdValue.textContent = currentThreshold;
+            });
+            thresholdSlider.addEventListener('change', processAndFindStars);
+
+            // Threshold method selection
+            thresholdTypeSelect.addEventListener('change', (e) => {
+                thresholdMethod = e.target.value;
+                globalThresholdControl.classList.toggle('hidden', thresholdMethod !== 'global');
+                adaptiveThresholdControl.classList.toggle('hidden', thresholdMethod !== 'adaptive');
+                photonThresholdControl.classList.toggle('hidden', thresholdMethod !== 'photon');
+                processAndFindStars();
+            });
+
+            // Adaptive threshold controls
+            adaptiveWindowSlider.addEventListener('input', (e) => {
+                adaptiveWindowSize = parseInt(e.target.value);
+                adaptiveWindowValue.textContent = `${adaptiveWindowSize}px`;
+            });
+
+            adaptiveOffsetSlider.addEventListener('input', (e) => {
+                adaptiveOffset = parseInt(e.target.value);
+                adaptiveOffsetValue.textContent = adaptiveOffset;
+            });
+
+            // Photon noise threshold controls
+            photonSigmaSlider.addEventListener('input', (e) => {
+                photonSigma = parseInt(e.target.value);
+                photonSigmaValue.textContent = photonSigma;
+            });
+
+            photonGainInput.addEventListener('change', (e) => {
+                photonGain = parseFloat(e.target.value) || 1.0;
+            });
+
+            // Advanced settings handlers
+            advancedSettingsBtn.addEventListener('click', () => {
+                advancedSettings.classList.toggle('hidden');
+            });
+
+            blurRadiusSlider.addEventListener('input', (e) => {
+                blurRadius = parseFloat(e.target.value);
+                blurRadiusValue.textContent = blurRadius;
+            });
+
+            minStarAreaSlider.addEventListener('input', (e) => {
+                minStarArea = parseInt(e.target.value);
+                minStarAreaValue.textContent = minStarArea;
+            });
+
+            backgroundSubtractionCheckbox.addEventListener('change', (e) => {
+                useBackgroundSubtraction = e.target.checked;
+            });
+
+            calculateFWHMCheckbox.addEventListener('change', (e) => {
+                calculateFWHM = e.target.checked;
+            });
+
+            showThresholdMapCheckbox.addEventListener('change', (e) => {
+                showThresholdMap = e.target.checked;
+                myP5.redraw();
+            });
+
+            // Magnitude zero point handlers
+            magZeroPointInput.addEventListener('change', (e) => {
+                magnitudeZeroPoint = parseFloat(e.target.value) || 0;
+                processAndFindStars();
+            });
+            magMinusBtn.addEventListener('click', () => {
+                magnitudeZeroPoint = Math.max(1, magnitudeZeroPoint - 1);
+                magZeroPointInput.value = magnitudeZeroPoint;
+                processAndFindStars();
+            });
+            magPlusBtn.addEventListener('click', () => {
+                magnitudeZeroPoint += 1;
+                magZeroPointInput.value = magnitudeZeroPoint;
+                processAndFindStars();
+            });
+
+            // View buttons handler
+            viewBtns.original.addEventListener('click', () => { 
+                currentView = 'original'; 
+                toggleViewButtonClass('original'); 
+                myP5.redraw();
+            });
+            viewBtns.stars.addEventListener('click', () => { 
+                currentView = 'stars'; 
+                toggleViewButtonClass('stars'); 
+                myP5.loop(); // Keep drawing for tooltips
+                myP5.redraw();
+            });
+            viewBtns.threshold.addEventListener('click', () => { 
+                currentView = 'threshold'; 
+                toggleViewButtonClass('threshold'); 
+                myP5.redraw();
+            });
+
+            // Action buttons handler
+            reprocessBtn.addEventListener('click', processAndFindStars);
+            catalogBtn.addEventListener('click', () => {
+                showStarTable = !showStarTable;
+                starTableContainer.classList.toggle('hidden', !showStarTable);
+                catalogBtn.classList.toggle('bg-yellow-600', showStarTable);
+                catalogBtn.classList.toggle('bg-gray-700', !showStarTable);
+                catalogBtn.classList.toggle('hover:bg-gray-600', !showStarTable);
+            });
+            exportBtn.addEventListener('click', showExportModal);
+
+            // Zoom controls
+            zoomInBtn.addEventListener('click', () => zoom(1.2));
+            zoomOutBtn.addEventListener('click', () => zoom(0.8));
+            zoomResetBtn.addEventListener('click', resetZoom);
+
+            // Modal buttons
+            alertOkBtn.addEventListener('click', () => {
+                document.getElementById('alert-modal').classList.add('hidden');
+            });
+            exportCloseBtn.addEventListener('click', () => {
+                document.getElementById('export-modal').classList.add('hidden');
+            });
+            exportCancelBtn.addEventListener('click', () => {
+                document.getElementById('export-modal').classList.add('hidden');
+            });
+            exportConfirmBtn.addEventListener('click', () => {
+                document.getElementById('export-modal').classList.add('hidden');
+                exportData();
+            });
+            
+            // Table sorting headers handler
+            document.getElementById('sort-id').addEventListener('click', () => sortTable('id'));
+            document.getElementById('sort-x').addEventListener('click', () => sortTable('x'));
+            document.getElementById('sort-y').addEventListener('click', () => sortTable('y'));
+            document.getElementById('sort-flux').addEventListener('click', () => sortTable('flux'));
+            document.getElementById('sort-area').addEventListener('click', () => sortTable('area'));
+            document.getElementById('sort-mag').addEventListener('click', () => sortTable('magnitude'));
+            document.getElementById('sort-fwhm').addEventListener('click', () => sortTable('fwhm'));
+
+            // Initial sort icon setup
+            updateSortIcons();
+
+            // Close advanced settings when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!advancedSettings.contains(e.target) && e.target !== advancedSettingsBtn) {
+                    advancedSettings.classList.add('hidden');
+                }
+            });
+        };
+    </script>
+</body>
+</html>
