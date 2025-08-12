@@ -50,4 +50,8 @@ Star Catalog Generator is a novel web-based application designed to assist amate
     
     *   Click the "Export Catalog" button.
         
-    *   A modal window will appear, allowing you to select whi
+    *   A modal window will appear, allowing you to select which fields you want to include in your output file.
+        
+    *   Choose your desired file format (CSV or JSON).
+        
+    *   Click "Download" to save the star catalog to your computer.
